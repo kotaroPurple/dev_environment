@@ -12,6 +12,7 @@ from .io import (
     StreamDataLoader,
     StreamDataset,
 )
+from .monitoring import ConsoleMonitor, ErrorPolicy, PipelineMonitor
 from .pipeline import (
     IdentityNode,
     MovingAverageNode,
@@ -35,6 +36,9 @@ __all__ = [
     "SequenceDataSourceAdapter",
     "StreamDataLoader",
     "StreamDataset",
+    "ConsoleMonitor",
+    "ErrorPolicy",
+    "PipelineMonitor",
     "IdentityNode",
     "MovingAverageNode",
     "NormaliseAmplitudeNode",

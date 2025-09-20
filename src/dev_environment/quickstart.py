@@ -12,6 +12,7 @@ from dev_environment.io import (
     IterableDataSourceAdapter,
     StreamDataLoader,
 )
+from dev_environment.monitoring import ConsoleMonitor
 from dev_environment.pipeline import (
     MovingAverageNode,
     NormaliseAmplitudeNode,
@@ -42,7 +43,8 @@ def build_pipeline() -> PipelineOrchestrator:
     builder.add_node(NormaliseAmplitudeNode(input_key="raw", output_key="raw_norm"))
     builder.add_node(MovingAverageNode(input_key="raw_norm", output_key="raw_norm_ma5", window=5))
 
-    return builder.build(loader)
+    monitor = ConsoleMonitor(prefix="[quickstart]")
+    return builder.build(loader, monitor=monitor)
 
 
 def main() -> None:

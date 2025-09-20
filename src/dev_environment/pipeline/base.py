@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Dict, Sequence
 
 from dev_environment.data import BaseTimeSeries, BlockBuffer
 from dev_environment.io import StreamDataLoader
+from dev_environment.monitoring import BlockSummary, ErrorPolicy, PipelineMonitor
 
 
 class ProcessingNode:
@@ -83,48 +85,90 @@ class PipelineBuilder:
 
         return order
 
-    def build(self, dataloader: StreamDataLoader) -> "PipelineOrchestrator":
+    def build(
+        self,
+        dataloader: StreamDataLoader,
+        *,
+        monitor: PipelineMonitor | None = None,
+        on_error: ErrorPolicy = ErrorPolicy.STOP,
+    ) -> "PipelineOrchestrator":
         order = self._resolve_order()
         spec = PipelineSpec(input_key=self._input_key, nodes=order, output_keys=self._output_keys)
-        return PipelineOrchestrator(dataloader=dataloader, spec=spec)
+        return PipelineOrchestrator(
+            dataloader=dataloader,
+            spec=spec,
+            monitor=monitor,
+            on_error=on_error,
+        )
 
 
 class PipelineOrchestrator:
     """Coordinates the sequential execution of processing nodes per block."""
 
-    def __init__(self, *, dataloader: StreamDataLoader, spec: PipelineSpec) -> None:
+    def __init__(
+        self,
+        *,
+        dataloader: StreamDataLoader,
+        spec: PipelineSpec,
+        monitor: PipelineMonitor | None = None,
+        on_error: ErrorPolicy = ErrorPolicy.STOP,
+    ) -> None:
         self._dataloader = dataloader
         self._spec = spec
         self._buffer: BlockBuffer[BaseTimeSeries] | None = None
+        self._monitor = monitor
+        self._error_policy = on_error
+        self._next_block_index = 0
 
     def reset(self) -> None:
         self._dataloader.reset()
         for node in self._spec.nodes:
             node.reset()
         self._buffer = None
+        self._next_block_index = 0
 
     def process_next(self) -> Mapping[str, BaseTimeSeries] | None:
-        raw_block = self._dataloader.next_block()
-        if raw_block is None:
-            return None
+        while True:
+            raw_block = self._dataloader.next_block()
+            if raw_block is None:
+                return None
 
-        self._buffer = BlockBuffer()
-        self._buffer.push(self._spec.input_key, raw_block)
-        produced: Dict[str, BaseTimeSeries] = {self._spec.input_key: raw_block}
+            block_index = self._next_block_index
+            self._next_block_index += 1
+            block_start = perf_counter()
+            if self._monitor:
+                self._monitor.on_block_start(block_index)
 
-        for node in self._spec.nodes:
-            required = {key: self._buffer.get(key) for key in node.requires()}
-            outputs = node.process(required)
-            for key, value in outputs.items():
-                if key not in node.produces():
-                    raise ValueError(f"Node {node.name} produced unexpected key '{key}'")
-                self._buffer.push(key, value)
-                produced[key] = value
+            try:
+                produced = self._execute_block(block_index, raw_block)
+            except PipelineExecutionError as error:
+                duration = perf_counter() - block_start
+                if self._monitor:
+                    self._monitor.on_error(block_index, error.node_name, error.__cause__ or error)
+                    self._monitor.on_block_end(
+                        BlockSummary(
+                            block_index=block_index,
+                            duration_seconds=duration,
+                            outputs=None,
+                        )
+                    )
 
-        if self._spec.output_keys is None:
+                if self._error_policy is ErrorPolicy.STOP:
+                    raise error
+
+                # Error policy CONTINUE: skip this block and attempt the next one.
+                continue
+
+            duration = perf_counter() - block_start
+            if self._monitor:
+                self._monitor.on_block_end(
+                    BlockSummary(
+                        block_index=block_index,
+                        duration_seconds=duration,
+                        outputs=produced,
+                    )
+                )
             return produced
-
-        return {key: produced[key] for key in self._spec.output_keys if key in produced}
 
     def run(self, *, max_blocks: int | None = None) -> Iterator[Mapping[str, BaseTimeSeries]]:
         count = 0
@@ -142,3 +186,59 @@ class PipelineOrchestrator:
         for node in self._spec.nodes:
             produced.update(node.produces())
         return produced
+
+    def _execute_block(
+        self,
+        block_index: int,
+        raw_block: BaseTimeSeries,
+    ) -> Dict[str, BaseTimeSeries]:
+        self._buffer = BlockBuffer()
+        self._buffer.push(self._spec.input_key, raw_block)
+        produced: Dict[str, BaseTimeSeries] = {self._spec.input_key: raw_block}
+
+        for node in self._spec.nodes:
+            node_start = perf_counter()
+            if self._monitor:
+                self._monitor.on_node_start(block_index, node.name)
+
+            try:
+                required = {key: self._buffer.get(key) for key in node.requires()}
+            except KeyError as error:
+                raise PipelineExecutionError(block_index, node.name, error) from error
+
+            try:
+                outputs = node.process(required)
+            except Exception as error:  # pragma: no cover - user code
+                raise PipelineExecutionError(block_index, node.name, error) from error
+            finally:
+                if self._monitor:
+                    self._monitor.on_node_end(
+                        block_index,
+                        node.name,
+                        perf_counter() - node_start,
+                    )
+
+            for key, value in outputs.items():
+                if key not in node.produces():
+                    raise PipelineExecutionError(
+                        block_index,
+                        node.name,
+                        ValueError(f"Node {node.name} produced unexpected key '{key}'"),
+                    )
+                self._buffer.push(key, value)
+                produced[key] = value
+
+        if self._spec.output_keys is None:
+            return produced
+
+        return {key: produced[key] for key in self._spec.output_keys if key in produced}
+
+
+class PipelineExecutionError(RuntimeError):
+    """Wraps exceptions raised while executing a pipeline node."""
+
+    def __init__(self, block_index: int, node_name: str, error: Exception) -> None:
+        super().__init__(f"Error in node '{node_name}' on block {block_index}: {error}")
+        self.block_index = block_index
+        self.node_name = node_name
+        self.__cause__ = error

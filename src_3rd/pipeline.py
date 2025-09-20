@@ -91,6 +91,9 @@ class Pipeline:
         self._monitor = monitor
 
     def run(self) -> Iterator[Dict[str, TimeSeriesBlock]]:
+        for node in self._nodes:
+            node.reset()
+
         buffer = BlockBuffer()
         for index, block in enumerate(self._dataloader):
             if self._monitor:

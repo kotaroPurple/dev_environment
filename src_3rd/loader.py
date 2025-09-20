@@ -40,3 +40,22 @@ def _generate_blocks(
             timestamp=now,
             metadata=metadata,
         )
+
+
+def bulk_dataset(
+    duration_seconds: int = 120,
+    *,
+    sample_rate: float = 256.0,
+) -> IterableDataset:
+    now = datetime.now(tz=timezone.utc)
+    total_samples = int(duration_seconds * sample_rate)
+    timeline = np.linspace(0.0, duration_seconds, total_samples, endpoint=False)
+    values = np.sin(2 * np.pi * timeline / duration_seconds)
+    metadata = {"duration_seconds": duration_seconds}
+    block = TimeSeriesBlock(
+        values=values,
+        sample_rate=sample_rate,
+        timestamp=now,
+        metadata=metadata,
+    )
+    return IterableDataset([block])

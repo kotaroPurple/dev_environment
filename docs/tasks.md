@@ -11,9 +11,9 @@
 - [x] 組み込み向けの軽量 `collate_block` ユーティリティ実装
 
 ## フェーズ3: Dataset / DataLoader
-- [ ] `StreamDataset` 抽象クラスの定義 (`__len__`, `__getitem__`, `stream`)
-- [ ] `DataSourceAdapter` インターフェースとサンプル (ファイル/モック) 実装
-- [ ] `StreamDataLoader` の逐次ブロック供給ロジック実装 (停止条件・再開位置・エラーハンドリング)
+- [x] `StreamDataset` 抽象クラスの定義 (`__len__`, `__getitem__`, `stream`)
+- [x] `DataSourceAdapter` インターフェースとサンプル (ファイル/モック) 実装
+- [x] `StreamDataLoader` の逐次ブロック供給ロジック実装 (停止条件・再開位置・エラーハンドリング)
 - [ ] ブロック完了後にのみ次ブロックを読み込む制御のユニットテスト
 
 ## フェーズ4: パイプライン層

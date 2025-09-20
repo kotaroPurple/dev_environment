@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterable, Iterator, List, Sequence, TypeVar
+from typing import Generic, Iterable, Iterator, List, Sequence, TypeVar
 
 T = TypeVar("T")
 
 
-class DataSourceAdapter(ABC):
+class DataSourceAdapter(Generic[T], ABC):
     """Abstract interface that exposes sequential block reads."""
 
     @abstractmethod

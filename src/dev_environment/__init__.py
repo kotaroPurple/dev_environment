@@ -12,6 +12,14 @@ from .io import (
     StreamDataLoader,
     StreamDataset,
 )
+from .pipeline import (
+    IdentityNode,
+    MovingAverageNode,
+    NormaliseAmplitudeNode,
+    PipelineBuilder,
+    PipelineOrchestrator,
+    ProcessingNode,
+)
 
 __all__ = [
     "BaseTimeSeries",
@@ -27,6 +35,12 @@ __all__ = [
     "SequenceDataSourceAdapter",
     "StreamDataLoader",
     "StreamDataset",
+    "IdentityNode",
+    "MovingAverageNode",
+    "NormaliseAmplitudeNode",
+    "PipelineBuilder",
+    "PipelineOrchestrator",
+    "ProcessingNode",
     "main",
 ]
 

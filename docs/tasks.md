@@ -6,9 +6,9 @@
 - [x] 逐次処理設計の README またはクイックスタートドラフト作成
 
 ## フェーズ2: データモデル実装
-- [ ] `BaseTimeSeries` dataclass の作成 (サンプリング周波数、タイムスタンプ、メタ情報)
-- [ ] ブロック単位のバッファ管理を行う `BlockBuffer` の実装とテスト
-- [ ] 組み込み向けの軽量 `collate_block` ユーティリティ実装
+- [x] `BaseTimeSeries` dataclass の作成 (サンプリング周波数、タイムスタンプ、メタ情報)
+- [x] ブロック単位のバッファ管理を行う `BlockBuffer` の実装とテスト
+- [x] 組み込み向けの軽量 `collate_block` ユーティリティ実装
 
 ## フェーズ3: Dataset / DataLoader
 - [ ] `StreamDataset` 抽象クラスの定義 (`__len__`, `__getitem__`, `stream`)

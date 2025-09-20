@@ -1,0 +1,1 @@
+"""Minimal sequential pipeline prototype."""

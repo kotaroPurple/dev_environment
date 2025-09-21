@@ -4,46 +4,39 @@
 `src_4th` モジュール全体のデータフローを以下に示します。
 
 ```mermaid
-digraph G {
-    rankdir=LR
-    subgraph cluster_io {
-        label="I/O 層"
-        style=dashed
-        source["AdapterDataset\n(Callable/Iterable)"]
+flowchart LR
+    subgraph IO層
+        source["AdapterDataset<br/>(Callable/Iterable)"]
         loader["StreamDataLoader"]
-    }
-    subgraph cluster_pipeline {
-        label="Pipeline 層"
-        style=dashed
-        builder["PipelineBuilder\n(依存解決)"]
-        orchestrator["PipelineOrchestrator\n(ErrorPolicy/Monitor)"]
-    }
-    subgraph cluster_nodes {
-        label="Processing Nodes"
-        style=dashed
+    end
+
+    subgraph Pipeline層
+        builder["PipelineBuilder<br/>(依存解決)"]
+        orchestrator["PipelineOrchestrator<br/>(ErrorPolicy/Monitor)"]
+    end
+
+    subgraph ProcessingNodes
         nodeA["NormalizerNode"]
         nodeB["MovingAverageNode"]
         nodeC["SlidingWindowNode"]
-    }
+    end
+
     monitor["ConsoleMonitor"]
     buffer["BlockBuffer"]
-    data["BaseTimeSeries (values, sample_rate, timestamp, metadata)"]
+    data["BaseTimeSeries<br/>(values, sample_rate, timestamp, metadata)"]
 
-    source -> loader -> orchestrator
-    builder -> orchestrator
-    orchestrator -> buffer
-    buffer -> nodeA
-    buffer -> nodeB
-    buffer -> nodeC
-    nodeA -> buffer
-    nodeB -> buffer
-    nodeC -> buffer
-    orchestrator -> monitor
-    loader -> data
-    nodeA -> data
-    nodeB -> data
-    nodeC -> data
-}
+    source --> loader --> orchestrator
+    builder --> orchestrator
+    orchestrator --> buffer
+    buffer --> nodeA & nodeB & nodeC
+    nodeA --> buffer
+    nodeB --> buffer
+    nodeC --> buffer
+    orchestrator --> monitor
+    loader --> data
+    nodeA --> data
+    nodeB --> data
+    nodeC --> data
 ```
 
 ## クラスの役割

@@ -148,3 +148,56 @@ class SlidingWindowNode(ProcessingNode):
             self._buffer = [remaining]
 
         return {self._key_out: window_block}
+
+
+class SplitSensorNode(ProcessingNode):
+    """Split a multi-sensor dict into individual keys."""
+
+    def __init__(self, input_key: str, sensor_keys: Iterable[str]) -> None:
+        super().__init__()
+        self._input_key = input_key
+        self._sensor_keys = list(sensor_keys)
+
+    def requires(self) -> Iterable[str]:
+        return [self._input_key]
+
+    def produces(self) -> Iterable[str]:
+        return [f"{sensor}_raw" for sensor in self._sensor_keys]
+
+    def process(self, inputs: Dict[str, BaseTimeSeries]) -> Dict[str, BaseTimeSeries]:
+        block = inputs[self._input_key]
+        # metadata must include per-sensor blocks to split
+        sensors = block.metadata.get("sensors")
+        if sensors is None:
+            raise ValueError("SplitSensorNode requires metadata['sensors'] with per-sensor blocks")
+        outputs: Dict[str, BaseTimeSeries] = {}
+        for sensor in self._sensor_keys:
+            sensor_block = sensors.get(sensor)
+            if sensor_block is None:
+                raise ValueError(f"Sensor '{sensor}' not found in metadata")
+            outputs[f"{sensor}_raw"] = sensor_block
+        return outputs
+
+
+class DecisionNode(ProcessingNode):
+    """Combine sensor features and emit a decision block."""
+
+    def __init__(self, required_keys: Iterable[str], output_key: str = "decision") -> None:
+        super().__init__()
+        self._required_keys = list(required_keys)
+        self._output_key = output_key
+
+    def requires(self) -> Iterable[str]:
+        return self._required_keys
+
+    def produces(self) -> Iterable[str]:
+        return [self._output_key]
+
+    def process(self, inputs: Dict[str, BaseTimeSeries]) -> Dict[str, BaseTimeSeries]:
+        score = sum(np.mean(block.values) for block in inputs.values()) / len(inputs)
+        first = next(iter(inputs.values()))
+        decision_block = first.copy_with(
+            values=np.array([[score]], dtype=np.float64),
+            metadata={"decision_score": float(score)},
+        )
+        return {self._output_key: decision_block}

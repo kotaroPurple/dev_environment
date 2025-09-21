@@ -3,43 +3,77 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable
 
 import numpy as np
 
-from .io import AdapterDataset, StreamDataLoader
+from .data import BaseTimeSeries
+from .io import MultiSensorDataset, StreamDataLoader
 from .monitoring import ConsoleMonitor
-from .nodes import MovingAverageNode, NormalizerNode, SlidingWindowNode
+from .nodes import DecisionNode, NormalizerNode, SlidingWindowNode, SplitSensorNode
 from .pipeline import PipelineBuilder
 
 
-def sine_source(num_blocks: int = 120, *, block_size: int = 256) -> Iterable[object]:
+def multisensor_source(
+    num_blocks: int = 120,
+    *,
+    block_size: int = 256,
+) -> dict[str, list[BaseTimeSeries]]:
     now = datetime.now(tz=timezone.utc)
+    sensors = {
+        "sensor_a": [],
+        "sensor_b": [],
+    }
     grid = np.linspace(0.0, 2 * np.pi, block_size, endpoint=False)
     for idx in range(num_blocks):
-        phase = idx * np.pi / 16
-        values = np.sin(grid + phase)
-        yield {
-            "values": values[:, None],
-            "sample_rate": 256.0,
-            "timestamp": now,
-            "metadata": {"block_index": idx},
-        }
+        for sid, phase_shift in [("sensor_a", 0.0), ("sensor_b", np.pi / 4)]:
+            values = np.sin(grid + idx * np.pi / 32 + phase_shift)[:, None]
+            sensors[sid].append(
+                BaseTimeSeries(
+                    values=values,
+                    sample_rate=256.0,
+                    timestamp=now,
+                    metadata={"sensor": sid, "block_index": idx},
+                )
+            )
+    return sensors
 
 
 def build_pipeline() -> None:
-    dataset = AdapterDataset(lambda: sine_source())
+    sensors = multisensor_source()
+    dataset = MultiSensorDataset(sensors)
     loader = StreamDataLoader(dataset)
 
-    builder = PipelineBuilder(input_key="raw", output_keys=["raw_norm", "raw_norm_ma5", "raw_fft"])
-    builder.add_node(NormalizerNode("raw", "raw_norm"))
-    builder.add_node(MovingAverageNode("raw_norm", "raw_norm_ma5", window=5))
+    builder = PipelineBuilder(
+        input_key="multi",
+        output_keys=[
+            "sensor_a_window",
+            "sensor_b_window",
+            "decision",
+        ],
+    )
+    builder.add_node(SplitSensorNode("multi", ["sensor_a", "sensor_b"]))
+    builder.add_node(NormalizerNode("sensor_a_raw", "sensor_a_norm"))
     builder.add_node(
         SlidingWindowNode(
-            key_in="raw_norm",
-            key_out="raw_fft",
+            "sensor_a_norm",
+            "sensor_a_window",
             window_seconds=5.0,
             hop_seconds=1.0,
+        )
+    )
+    builder.add_node(NormalizerNode("sensor_b_raw", "sensor_b_norm"))
+    builder.add_node(
+        SlidingWindowNode(
+            "sensor_b_norm",
+            "sensor_b_window",
+            window_seconds=5.0,
+            hop_seconds=1.0,
+        )
+    )
+    builder.add_node(
+        DecisionNode(
+            required_keys=["sensor_a_window", "sensor_b_window"],
+            output_key="decision",
         )
     )
 
@@ -48,17 +82,18 @@ def build_pipeline() -> None:
 
     emitted = 0
     for outputs in pipeline.run():
-        if "raw_fft" not in outputs:
+        decision = outputs.get("decision")
+        if decision is None:
             continue
-        block = outputs["raw_fft"]
+        score = decision.metadata.get("decision_score")
         print(
-            "FFT window: samples={}, duration={:.2f}s".format(
-                block.block_size,
-                block.duration_seconds,
+            "Decision score: {:.3f} (keys={})".format(
+                float(score),
+                list(outputs.keys()),
             )
         )
         emitted += 1
-        if emitted >= 3:
+        if emitted >= 5:
             break
 
 

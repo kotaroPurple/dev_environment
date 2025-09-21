@@ -8,7 +8,13 @@ from .io import (
     StreamDataLoader,
 )
 from .monitoring import ConsoleMonitor, ErrorPolicy, PipelineMonitor
-from .nodes import MovingAverageNode, NormalizerNode, SlidingWindowNode
+from .nodes import (
+    DecisionNode,
+    MovingAverageNode,
+    NormalizerNode,
+    SlidingWindowNode,
+    SplitSensorNode,
+)
 from .pipeline import PipelineBuilder, PipelineExecutionError, PipelineOrchestrator
 
 __all__ = [
@@ -21,9 +27,11 @@ __all__ = [
     "ConsoleMonitor",
     "ErrorPolicy",
     "PipelineMonitor",
+    "DecisionNode",
     "MovingAverageNode",
     "NormalizerNode",
     "SlidingWindowNode",
+    "SplitSensorNode",
     "PipelineBuilder",
     "PipelineExecutionError",
     "PipelineOrchestrator",

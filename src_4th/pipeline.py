@@ -120,7 +120,15 @@ class PipelineOrchestrator:
 
             try:
                 for node in self._nodes:
-                    inputs = {key: buffer.get(key) for key in node.requires()}
+                    inputs: Dict[str, BaseTimeSeries] = {}
+                    missing = []
+                    for key in node.requires():
+                        try:
+                            inputs[key] = buffer.get(key)
+                        except KeyError:
+                            missing.append(key)
+                    if missing:
+                        continue
                     outputs = node.process(inputs)
                     for key, value in outputs.items():
                         buffer.set(key, value)

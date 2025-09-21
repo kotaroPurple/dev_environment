@@ -6,9 +6,15 @@ import numpy as np
 import pytest
 
 from ..data import BaseTimeSeries
-from ..io import IterableDataset, StreamDataLoader
+from ..io import IterableDataset, MultiSensorDataset, StreamDataLoader
 from ..monitoring import ErrorPolicy
-from ..nodes import MovingAverageNode, NormalizerNode, SlidingWindowNode
+from ..nodes import (
+    DecisionNode,
+    MovingAverageNode,
+    NormalizerNode,
+    SlidingWindowNode,
+    SplitSensorNode,
+)
 from ..pipeline import PipelineBuilder, PipelineExecutionError
 
 
@@ -73,3 +79,33 @@ def test_sliding_window_emits_after_fill(sample_block: BaseTimeSeries) -> None:
     # Expect last block to emit window, earlier ones empty
     assert len(outputs) == 3
     assert "fft" in outputs[-1]
+
+
+def test_multisensor_decision() -> None:
+    now = datetime.now(tz=timezone.utc)
+    sensors = {
+        "sensor_a": [
+            BaseTimeSeries(values=np.full((10, 1), 1.0), sample_rate=10.0, timestamp=now),
+            BaseTimeSeries(values=np.full((10, 1), 2.0), sample_rate=10.0, timestamp=now),
+        ],
+        "sensor_b": [
+            BaseTimeSeries(values=np.full((10, 1), 3.0), sample_rate=10.0, timestamp=now),
+            BaseTimeSeries(values=np.full((10, 1), 4.0), sample_rate=10.0, timestamp=now),
+        ],
+    }
+    dataset = MultiSensorDataset(sensors)
+    loader = StreamDataLoader(dataset)
+    builder = PipelineBuilder(input_key="multi", output_keys=["decision"])
+    builder.add_node(SplitSensorNode("multi", ["sensor_a", "sensor_b"]))
+    builder.add_node(NormalizerNode("sensor_a_raw", "sensor_a_norm"))
+    builder.add_node(NormalizerNode("sensor_b_raw", "sensor_b_norm"))
+    builder.add_node(
+        DecisionNode(
+            required_keys=["sensor_a_norm", "sensor_b_norm"],
+            output_key="decision",
+        )
+    )
+    pipeline = builder.build(loader)
+    outputs = list(pipeline.run())
+    assert len(outputs) == 2
+    assert "decision" in outputs[-1]

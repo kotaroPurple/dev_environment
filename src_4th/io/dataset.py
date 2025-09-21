@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterable, Iterator, List
+from typing import Dict, Iterable, Iterator, List
 
 from ..data import BaseTimeSeries
 
@@ -27,3 +27,27 @@ class IterableDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self._blocks)
+
+
+class MultiSensorDataset(Dataset):
+    """Dataset that combines multiple sensor iterables into synchronized samples."""
+
+    def __init__(self, sensors: Dict[str, Iterable[BaseTimeSeries]]) -> None:
+        self._sensors = sensors
+
+    def __iter__(self) -> Iterator[BaseTimeSeries]:
+        iterators = {key: iter(blocks) for key, blocks in self._sensors.items()}
+        while True:
+            sample: Dict[str, BaseTimeSeries] = {}
+            for key, iterator in iterators.items():
+                try:
+                    sample[key] = next(iterator)
+                except StopIteration:
+                    return
+            first = next(iter(sample.values()))
+            yield BaseTimeSeries(
+                values=first.values,
+                sample_rate=first.sample_rate,
+                timestamp=first.timestamp,
+                metadata={"sensors": sample},
+            )
